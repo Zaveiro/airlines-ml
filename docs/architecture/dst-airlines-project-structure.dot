@@ -2,7 +2,7 @@ digraph DstAirlinesProjectStructure {
   // ---------- Global graph styling ----------
   rankdir=TB;
   labelloc="t";
-  label="DST Airlines — Development Structure (Repository Layout)";
+  label="DST Airlines - Development Structure (Repository Layout)";
   fontsize=20;
   fontname="Helvetica";
 
@@ -35,10 +35,11 @@ digraph DstAirlinesProjectStructure {
   ];
 
   // ---------- Top-level files ----------
+  readme [label="README.md", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
   env_example [label=".env.example", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
-  gitignore  [label=".gitignore", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
-  precommit  [label=".pre-commit-config.yaml", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
-  pyproject  [label="pyproject.toml", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
+  gitignore [label=".gitignore", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
+  precommit [label=".pre-commit-config.yaml", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
+  pyproject [label="pyproject.toml", shape=note, fillcolor="#fff7ed", color="#fed7aa"];
 
   // ---------- Clusters ----------
   subgraph cluster_infra {
@@ -50,6 +51,8 @@ digraph DstAirlinesProjectStructure {
     fillcolor="#fafafa";
 
     venv [label=".venv/\n(local virtual env)\n(gitignored)", shape=folder, fillcolor="#fef2f2", color="#fecaca"];
+    vscode [label=".vscode/\n(local IDE settings)", shape=folder, fillcolor="#fef2f2", color="#fecaca"];
+    env_local [label=".env\n(local secrets, gitignored)", shape=note, fillcolor="#fef2f2", color="#fecaca"];
     scripts [label="scripts/", shape=folder, fillcolor="#eef2ff", color="#c7d2fe"];
     render_graphviz [label="render_graphviz.py", shape=note, fillcolor="#ffffff", color="#c7d2fe"];
 
@@ -96,12 +99,20 @@ digraph DstAirlinesProjectStructure {
     fillcolor="#f8fafc";
 
     docs [label="docs/", shape=folder, fillcolor="#f0fdf4", color="#86efac"];
-    arch [label="architecture/", shape=folder, fillcolor="#f0fdf4", color="#86efac"];
-    arch_readme [label="README.md", shape=note, fillcolor="#ffffff", color="#86efac"];
-    dot_file [label="dst-airlines-project-structure.dot", shape=note, fillcolor="#ffffff", color="#86efac"];
+    apis [label="apis/", shape=folder, fillcolor="#f0fdf4", color="#86efac"];
+    architecture [label="architecture/", shape=folder, fillcolor="#f0fdf4", color="#86efac"];
+    rendered [label="rendered/", shape=folder, fillcolor="#f0fdf4", color="#86efac"];
 
-    docs -> arch;
-    arch -> {dot_file arch_readme};
+    api_aviation [label="aviationstack.md", shape=note, fillcolor="#ffffff", color="#86efac"];
+    api_position [label="positionstack.md", shape=note, fillcolor="#ffffff", color="#86efac"];
+    api_weather [label="weatherstack.md", shape=note, fillcolor="#ffffff", color="#86efac"];
+    dot_file [label="dst-airlines-project-structure.dot", shape=note, fillcolor="#ffffff", color="#86efac"];
+    dot_pdf [label="dst-airlines-project-structure.pdf", shape=note, fillcolor="#ffffff", color="#86efac"];
+
+    docs -> {apis architecture};
+    apis -> {api_aviation api_position api_weather};
+    architecture -> {dot_file rendered};
+    rendered -> dot_pdf;
   }
 
   subgraph cluster_etl {
@@ -118,9 +129,15 @@ digraph DstAirlinesProjectStructure {
 
     av_extract [label="aviationstack.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
     ow_extract [label="openweather.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
+    clean_flights [label="clean_flights.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
+    enrich_weather [label="enrich_weather.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
+    to_mongo [label="to_mongo.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
+    to_neo4j [label="to_neo4j.py", shape=note, fillcolor="#ffffff", color="#f9a8d4"];
 
     etl -> {extract transform load};
     extract -> {av_extract ow_extract};
+    transform -> {clean_flights enrich_weather};
+    load -> {to_mongo to_neo4j};
   }
 
   subgraph cluster_src {
@@ -132,33 +149,36 @@ digraph DstAirlinesProjectStructure {
 
     src [label="src/", shape=folder, fillcolor="#dbeafe", color="#93c5fd"];
     pkg [label="dst_airlines/", shape=folder, fillcolor="#ffffff", color="#93c5fd"];
+    pkg_init [label="__init__.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    config [label="config.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
 
     clients [label="clients/", shape=folder, fillcolor="#ffffff", color="#93c5fd"];
     models [label="models/", shape=folder, fillcolor="#ffffff", color="#93c5fd"];
     utils [label="utils/", shape=folder, fillcolor="#ffffff", color="#93c5fd"];
-    config [label="config.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
 
     // clients
     clients_init [label="__init__.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
     clients_av [label="aviationstack.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
-    clients_ow [label="openweather.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    clients_position [label="positionstack.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    clients_weather [label="weatherstack.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
 
     // models
     models_init [label="__init__.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
-    models_av [label="aviationstack.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
-    models_ow [label="openweather.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    model_ml_aviation [label="ml_aviationstack.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
 
     // utils
     utils_init [label="__init__.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
     http [label="http.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
-    logging [label="logging.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    custom_logging [label="custom_logging.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    tool_fernet [label="tool_fernet.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
+    get_tool_fernet [label="get_tool_fernet.py", shape=note, fillcolor="#ffffff", color="#93c5fd"];
 
     src -> pkg;
-    pkg -> {clients models utils config};
+    pkg -> {pkg_init config clients models utils};
 
-    clients -> {clients_init clients_av clients_ow};
-    models  -> {models_init models_av models_ow};
-    utils   -> {utils_init http logging};
+    clients -> {clients_init clients_av clients_position clients_weather};
+    models -> {models_init model_ml_aviation};
+    utils -> {utils_init http custom_logging tool_fernet get_tool_fernet};
   }
 
   subgraph cluster_tests {
@@ -176,7 +196,7 @@ digraph DstAirlinesProjectStructure {
   }
 
   // ---------- Root connections ----------
-  root -> {github docs etl src tests data scripts venv env_example gitignore precommit pyproject};
+  root -> {github docs etl src tests data scripts venv vscode env_local readme env_example gitignore precommit pyproject};
 
   // ---------- Legend ----------
   subgraph cluster_legend {
@@ -187,8 +207,8 @@ digraph DstAirlinesProjectStructure {
     fillcolor="#ffffff";
 
     legend_code [label="Versioned code/docs", shape=box, fillcolor="#eff6ff", color="#93c5fd"];
-    legend_local [label="Local-only (gitignored)\n(e.g., .venv)", shape=box, fillcolor="#fef2f2", color="#fecaca"];
-    legend_data [label="Data dirs exist, contents ignored\n(data/raw, processed, ...)", shape=box, fillcolor="#fff7ed", color="#fed7aa"];
+    legend_local [label="Local-only (gitignored)\n(e.g., .venv, .env)", shape=box, fillcolor="#fef2f2", color="#fecaca"];
+    legend_data [label="Data dirs exist, contents ignored\n(data/raw, intermediate, processed)", shape=box, fillcolor="#fff7ed", color="#fed7aa"];
 
     legend_code -> legend_local [style=invis];
     legend_local -> legend_data [style=invis];

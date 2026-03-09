@@ -14,10 +14,17 @@ def ensure_graphviz_installed() -> None:
     try:
         subprocess.run(
             ["dot", "-V"],
-            check=False,
+            check=True,
             capture_output=True,
             text=True,
         )
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(
+            "Graphviz `dot` command was found but failed to run correctly.\n"
+            f"Command: {' '.join(exc.cmd)}\n"
+            f"Exit code: {exc.returncode}\n"
+            f"stderr: {exc.stderr.strip() if exc.stderr else '(empty)'}"
+        ) from exc
     except FileNotFoundError as exc:
         raise SystemExit(
             "Graphviz is not installed or the `dot` command is not available in PATH.\n\n"
@@ -28,7 +35,7 @@ def ensure_graphviz_installed() -> None:
         ) from exc
 
 
-def render_dot_to_pdf(dot_path: Path, output_dir: Path) -> Path:
+def render_dot_to_pdf(dot_path: Path, output_dir: Path, input_root: Path) -> Path:
     """
     Render a single .dot file to a PDF file using Graphviz.
 
@@ -45,7 +52,9 @@ def render_dot_to_pdf(dot_path: Path, output_dir: Path) -> Path:
         Path to the generated PDF file.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = output_dir / f"{dot_path.stem}.pdf"
+    relative_dot_path = dot_path.relative_to(input_root)
+    pdf_path = output_dir / relative_dot_path.with_suffix(".pdf")
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Command: dot -Tpdf input.dot -o output.pdf
     subprocess.run(
@@ -83,6 +92,8 @@ def main() -> None:
 
     if not input_dir.exists():
         raise SystemExit(f"Input directory does not exist: {input_dir}")
+    if not input_dir.is_dir():
+        raise SystemExit(f"Input path is not a directory: {input_dir}")
 
     ensure_graphviz_installed()
 
@@ -100,7 +111,7 @@ def main() -> None:
 
     for dot_file in dot_files:
         try:
-            pdf_path = render_dot_to_pdf(dot_file, output_dir)
+            pdf_path = render_dot_to_pdf(dot_file, output_dir, input_dir)
             print(f"OK   {dot_file}  ->  {pdf_path}")
         except subprocess.CalledProcessError as exc:
             print(f"ERR  {dot_file} (Graphviz failed): {exc}")
