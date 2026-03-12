@@ -13,3 +13,4 @@ __pycache__/
 data/raw/
 data/processed/
 data/interim/
+data/mongodb_data

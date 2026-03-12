@@ -1,0 +1,23 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: mongo-airlines-ml
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root    # set a username
+      MONGO_INITDB_ROOT_PASSWORD: passwd  # set a password
+    volumes:
+      - ./data/mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-airlines-ml
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: passwd
+      POSTGRES_DB: flights_db
+    ports:
+      - "5432:5432"
