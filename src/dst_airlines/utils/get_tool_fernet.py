@@ -22,11 +22,11 @@ def get_credentials(limit=100):
 
     cipher = Fernet(_clean(key).encode("utf-8"))
 
-    host = os.getenv("API_URL_AVIONSTACK")
+    host = os.getenv("API_URL_AVIONSTACK_FLIGHTS")
     token_enc = os.getenv("TOKEN_AVIONSTACK")
 
     if not host or not token_enc:
-        raise RuntimeError("Missing API_URL_AVIONSTACK/TOKEN_AVIONSTACK in environment (.env).")
+        raise RuntimeError("Missing API_URL_AVIONSTACK_FLIGHTS/TOKEN_AVIONSTACK in environment (.env).")
 
     token = _maybe_decrypt(token_enc, cipher)
 
