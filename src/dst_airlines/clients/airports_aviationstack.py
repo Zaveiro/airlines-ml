@@ -39,43 +39,68 @@ def save_to_incoming(data: Any, prefix: str) -> Path:
 # ==========================================================
 
 def fetch_and_save_airports():
-    host, token, limit = get_credentials()
+    host, token, _ = get_credentials()
 
-    # URL Correction: Ensure it hits /v1/airports directly
     base_url = host.split("/v1/")[0]
-    final_url = f"{base_url}/v1/airports"
+    endpoint_url = f"{base_url}/v1/airports"
 
-    params = {
-        "access_key": token,
-        "limit": limit
-    }
+    limit = 100
+    offset = 0
 
-    print(f"Fetching from: {final_url}...")
+    all_cleaned_records = []
+    all_raw_responses = []
+
+    print(f"Fetching from: {endpoint_url}...")
 
     try:
-        response = requests.get(final_url, params=params, timeout=20)
-        response.raise_for_status()
-        payload = response.json()
+        while True:
+            params = {
+                "access_key": token,
+                "limit": limit,
+                "offset": offset
+            }
 
-        if "error" in payload:
-            print(f"API Error: {payload['error'].get('message')}")
+            print(f"Requesting page with offset={offset}...")
+
+            response = requests.get(endpoint_url, params=params, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+
+            # Handle API-level errors
+            if "error" in payload:
+                print(f"API Error: {payload['error'].get('message')}")
+                break
+
+            records = payload.get("data", [])
+
+            # Stop condition: no more records returned
+            if not records:
+                print("No more data to fetch.")
+                break
+
+            # Clean records
+            cleaned_records = [prune(record) for record in records if record]
+
+            # Accumulate results
+            all_cleaned_records.extend(cleaned_records)
+            all_raw_responses.append(payload)
+
+            print(f"Fetched {len(cleaned_records)} records.")
+
+            # Move to next page
+            offset += limit
+
+        if not all_cleaned_records:
+            print("No data collected.")
             return
 
-        # Extract and Prune
-        incoming_data = payload.get("data", [])
-        if not incoming_data:
-            print("No data found in response.")
-            return
+        # Save consolidated results
+        raw_path = save_to_incoming(all_raw_responses, "aviationstack_airports_incoming")
+        processed_path = save_to_incoming(all_cleaned_records, "airports_processed")
 
-        cleaned_data = [prune(item) for item in incoming_data if item]
-
-        # Save both incoming and Cleaned (Optional)
-        incoming_path = save_to_incoming(payload, "aviationstack_airports_incoming")
-        clean_path = save_to_incoming(cleaned_data, "airports_processed")
-
-        print(f"Successfully saved {len(cleaned_data)} airports.")
-        print(f"incoming: {incoming_path.name}")
-        print(f"Cleaned: {clean_path.name}")
+        print(f"\nTotal records saved: {len(all_cleaned_records)}")
+        print(f"Raw data file: {raw_path.name}")
+        print(f"Processed data file: {processed_path.name}")
 
     except Exception as e:
         print(f"Failed to fetch airports: {e}")
