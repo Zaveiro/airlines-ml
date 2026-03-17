@@ -95,11 +95,11 @@ def fetch_and_save_airports():
             return
 
         # Save consolidated results
-        raw_path = save_to_incoming(all_raw_responses, "aviationstack_airports_incoming")
+        # raw_path = save_to_incoming(all_raw_responses, "aviationstack_airports_incoming")
         processed_path = save_to_incoming(all_cleaned_records, "airports_processed")
 
         print(f"\nTotal records saved: {len(all_cleaned_records)}")
-        print(f"Raw data file: {raw_path.name}")
+        # print(f"Raw data file: {raw_path.name}")
         print(f"Processed data file: {processed_path.name}")
 
     except Exception as e:
