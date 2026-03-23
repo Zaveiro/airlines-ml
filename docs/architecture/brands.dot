@@ -1,0 +1,147 @@
+digraph BranchNamingConvention {
+    rankdir=TB;
+    splines=true;
+    nodesep=0.4;
+    ranksep=0.7;
+    fontname="Helvetica";
+    labelloc="t";
+    label="Branch Naming Convention: CI/CD + Data Ingestion Architecture";
+
+    node [shape=box, style="rounded,filled", fillcolor="#F8F9FA", color="#444444", fontname="Helvetica"];
+    edge [color="#666666", fontname="Helvetica"];
+
+    start [shape=oval, fillcolor="#DDEEFF", label="Start\nI want to create a branch"];
+    question [shape=diamond, fillcolor="#FFF4CC", label="What is the MAIN intent\nof the change?"];
+
+    rule [shape=note, fillcolor="#E8F5E9", label="Base Rule\n\ntype/scope-goal\n\nExamples:\nfeat/setup-mongodb-action\nci/ingest-workflow\nfeat/api1-endpoint-airports"];
+
+    golden [shape=note, fillcolor="#FFE6E6", label="Golden Rule\n\nDo NOT describe everything changed.\nDescribe WHY the change exists."];
+
+    start -> question;
+    question -> rule [style=dashed, label="naming"];
+
+    // TYPES
+    feat [fillcolor="#E3F2FD", label="feat/\nNew capability"];
+    fix [fillcolor="#FDECEA", label="fix/\nBug fix"];
+    refactor [fillcolor="#F3E5F5", label="refactor/\nInternal restructure"];
+    ci [fillcolor="#E8F5E9", label="ci/\nWorkflows & automation"];
+    build [fillcolor="#FFF3E0", label="build/\nDocker & build system"];
+    deploy [fillcolor="#FCE4EC", label="deploy/\nDeployment"];
+    docs [fillcolor="#F1F8E9", label="docs/\nDocumentation"];
+    test [fillcolor="#E0F7FA", label="test/\nTesting"];
+
+    question -> feat;
+    question -> fix;
+    question -> refactor;
+    question -> ci;
+    question -> build;
+    question -> deploy;
+    question -> docs;
+    question -> test;
+
+    // INFRASTRUCTURE (Actions)
+    subgraph cluster_actions {
+        label="Reusable Actions (.github/actions)";
+        color="#A5D6A7";
+        style="rounded";
+
+        a1 [label="feat/setup-python-env-action"];
+        a2 [label="feat/setup-mongodb-action"];
+        a3 [label="feat/setup-sql-action"];
+        a4 [label="feat/validate-source-config-action"];
+        a5 [label="feat/ingest-source-action"];
+        a6 [label="feat/docker-build-action"];
+    }
+
+    // WORKFLOWS
+    subgraph cluster_workflows {
+        label="Workflows (.github/workflows)";
+        color="#81D4FA";
+        style="rounded";
+
+        w1 [label="ci/bootstrap-workflows"];
+        w2 [label="ci/ingest-workflow"];
+        w3 [label="ci/pr-validation"];
+        w4 [label="ci/ingest-matrix"];
+    }
+
+    // DATA INGESTION DOMAIN
+    subgraph cluster_domain {
+        label="Data Ingestion (APIs & Endpoints)";
+        color="#CE93D8";
+        style="rounded";
+
+        api1 [label="feat/api1-client"];
+        api2 [label="feat/api2-client"];
+        api3 [label="feat/api3-client"];
+
+        ep1 [label="feat/api1-endpoint-airports"];
+        ep2 [label="feat/api2-endpoint-schedules"];
+        ep3 [label="fix/api3-pagination"];
+        ep4 [label="test/api2-ingestion"];
+    }
+
+    // DATABASES
+    subgraph cluster_storage {
+        label="Storage Layer";
+        color="#90CAF9";
+        style="rounded";
+
+        m1 [label="feat/mongodb-raw-storage"];
+        m2 [label="fix/mongodb-connection"];
+        s1 [label="feat/sql-normalized-storage"];
+        s2 [label="refactor/sql-repositories"];
+    }
+
+    // DOCKER
+    subgraph cluster_docker {
+        label="Docker / Build";
+        color="#FFCC80";
+        style="rounded";
+
+        d1 [label="build/docker-dev-env"];
+        d2 [label="build/docker-base-image"];
+        d3 [label="fix/docker-build"];
+        d4 [label="deploy/docker-ghcr"];
+    }
+
+    // RELATIONS
+    feat -> a1;
+    feat -> a2;
+    feat -> a3;
+    feat -> a4;
+    feat -> a5;
+    feat -> a6;
+
+    ci -> w1;
+    ci -> w2;
+    ci -> w3;
+    ci -> w4;
+
+    feat -> api1;
+    feat -> api2;
+    feat -> api3;
+    feat -> ep1;
+    feat -> ep2;
+
+    fix -> ep3;
+    test -> ep4;
+
+    feat -> m1;
+    fix -> m2;
+    feat -> s1;
+    refactor -> s2;
+
+    build -> d1;
+    build -> d2;
+    fix -> d3;
+    deploy -> d4;
+
+    rule -> golden [style=dashed];
+
+    bad [shape=note, fillcolor="#FFEBEE", label="Avoid\n\nupdate-project\nchanges-2\nmongodb-docker-sql\nmain-fixes"];
+    good [shape=note, fillcolor="#E8F5E9", label="Prefer\n\nci/ingest-workflow\nfeat/setup-mongodb-action\nfeat/api1-endpoint-airports\nbuild/docker-dev-env"];
+
+    golden -> bad;
+    golden -> good;
+}

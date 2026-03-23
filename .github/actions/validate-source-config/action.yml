@@ -1,0 +1,21 @@
+name: "Validate Source Config"
+description: "Check for required config files and environment variables"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check .env file exists
+      run: |
+        if [ ! -f .env ]; then
+          echo ".env file missing!"
+          exit 1
+        fi
+      shell: bash
+
+    - name: Check required environment variables
+      run: |
+        source .env
+        : "${ENCRYPTION_KEY:?Missing ENCRYPTION_KEY}"
+        : "${API_URL_AVIONSTACK:?Missing API_URL_AVIONSTACK}"
+        : "${TOKEN_AVIONSTACK:?Missing TOKEN_AVIONSTACK}"
+      shell: bash
