@@ -20,19 +20,31 @@ jobs:
       run:
         shell: bash
 
+    env:
+      SOURCE_NAME: aviationstack
+      RAW_DIR: data/raw
+      INCOMING_DIR: data/incoming
+      PROCESSED_DIR: data/processed
+      RAW_PATTERN: data/raw/aviationstack_raw*.json
+      INCOMING_PATTERN: data/incoming/aviationstack_incoming*.json
+      PROCESSED_PATTERN: data/processed/aviationstack_incoming*.json
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Record pipeline start time
+        run: echo "PIPELINE_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Validate source config
         uses: ./.github/actions/validate-source-config
         with:
           source-name: "aviationstack"
-          api-url-var: "API_URL_AVIONSTACK_FLIGHTS"
+          api-url-var: "API_URL_AVIATIONSTACK_FLIGHTS"
           credential-var: "AVIATIONSTACK_API_KEY_ENCRYPTED"
         env:
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
-          API_URL_AVIONSTACK_FLIGHTS: ${{ vars.API_URL_AVIONSTACK_FLIGHTS }}
+          API_URL_AVIATIONSTACK_FLIGHTS: ${{ vars.API_URL_AVIATIONSTACK_FLIGHTS }}
           AVIATIONSTACK_API_KEY_ENCRYPTED: ${{ secrets.AVIATIONSTACK_API_KEY_ENCRYPTED }}
 
       - name: Set up Python environment
@@ -48,36 +60,105 @@ jobs:
         run: python etl/extract/aviationstack.py
         env:
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
-          API_URL_AVIONSTACK_FLIGHTS: ${{ vars.API_URL_AVIONSTACK_FLIGHTS }}
+          API_URL_AVIATIONSTACK_FLIGHTS: ${{ vars.API_URL_AVIATIONSTACK_FLIGHTS }}
           AVIATIONSTACK_API_KEY_ENCRYPTED: ${{ secrets.AVIATIONSTACK_API_KEY_ENCRYPTED }}
+
+      - name: Verify raw output
+        run: |
+          shopt -s nullglob
+          files=($RAW_PATTERN)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "[verify-raw] No raw files were generated."
+            exit 1
+          fi
+
+          echo "RAW_FILE_COUNT=${#files[@]}" >> "$GITHUB_ENV"
+          echo "[verify-raw] Raw files found: ${#files[@]}"
+          ls -lah "$RAW_DIR"
 
       - name: Transform raw to incoming
         run: python etl/transform/aviationstack_to_incoming.py
 
-      - name: Load incoming data to MongoDB
-        run: python etl/load/to_mongo.py
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB: ${{ vars.MONGODB_DB }}
-          MONGODB_COLLECTION: ${{ vars.MONGODB_COLLECTION }}
+      - name: Verify incoming output
+        run: |
+          shopt -s nullglob
+          files=($INCOMING_PATTERN)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "[verify-incoming] No incoming files were generated."
+            exit 1
+          fi
+
+          echo "INCOMING_FILE_COUNT=${#files[@]}" >> "$GITHUB_ENV"
+          echo "[verify-incoming] Incoming files found: ${#files[@]}"
+          ls -lah "$INCOMING_DIR"
 
       - name: Upload raw data artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aviationstack-raw
-          path: data/raw/*.json
+          path: ${{ env.RAW_PATTERN }}
+          if-no-files-found: warn
 
       - name: Upload incoming data artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aviationstack-incoming
-          path: data/incoming/*.json
+          path: ${{ env.INCOMING_PATTERN }}
+          if-no-files-found: warn
+
+      - name: Load incoming data to MongoDB
+        run: python etl/load/to_mongo.py
+        env:
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: ${{ vars.MONGODB_DB }}
+          MONGODB_COLLECTION: ${{ vars.MONGODB_COLLECTION }}
+
+      - name: Verify processed output
+        run: |
+          shopt -s nullglob
+          files=($PROCESSED_PATTERN)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "[verify-processed] No processed files were generated."
+            exit 1
+          fi
+
+          echo "PROCESSED_FILE_COUNT=${#files[@]}" >> "$GITHUB_ENV"
+          echo "[verify-processed] Processed files found: ${#files[@]}"
+          ls -lah "$PROCESSED_DIR"
 
       - name: Upload processed data artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aviationstack-processed
-          path: data/processed/*.json
+          path: ${{ env.PROCESSED_PATTERN }}
+          if-no-files-found: warn
+
+      - name: Pipeline summary
+        if: always()
+        run: |
+          ended_at=$(date +%s)
+          started_at=${PIPELINE_STARTED_AT:-$ended_at}
+          duration=$((ended_at - started_at))
+
+          echo "=== PIPELINE SUMMARY ==="
+          echo "source: ${SOURCE_NAME}"
+          echo "raw files: ${RAW_FILE_COUNT:-0}"
+          echo "incoming files: ${INCOMING_FILE_COUNT:-0}"
+          echo "processed files: ${PROCESSED_FILE_COUNT:-0}"
+          echo "duration_seconds: ${duration}"
+
+          {
+            echo "## Pipeline Summary"
+            echo ""
+            echo "- Source: ${SOURCE_NAME}"
+            echo "- Raw files: ${RAW_FILE_COUNT:-0}"
+            echo "- Incoming files: ${INCOMING_FILE_COUNT:-0}"
+            echo "- Processed files: ${PROCESSED_FILE_COUNT:-0}"
+            echo "- Duration (s): ${duration}"
+          } >> "$GITHUB_STEP_SUMMARY"
