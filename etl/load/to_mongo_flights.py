@@ -1,34 +1,33 @@
+import argparse
 import json
 import os
 import shutil
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import BulkWriteError
 
+from etl.load.metrics import (
+    emit_file_metrics,
+    emit_pipeline_metrics,
+    emit_pipeline_status
+    )
+
+from etl.load.common import (
+    build_document_meta,
+    build_incoming_pattern,
+    build_processed_destination,
+    generate_run_id,
+    log_event
+    )
+
 load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INCOMING_DIR = PROJECT_ROOT / "data" / "incoming"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def log_event(level: str, stage: str, event: str, **kwargs) -> None:
-    payload = {
-        "timestamp": utc_now_iso(),
-        "level": level.upper(),
-        "stage": stage,
-        "event": event,
-        **kwargs,
-    }
-    print(json.dumps(payload, ensure_ascii=False))
 
 
 def extract_records(payload):
@@ -69,7 +68,15 @@ def is_valid_flight_key(flight_key):
     )
 
 
-def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=None):
+def sync_flights_to_mongo(
+    source: str = "aviationstack",
+    endpoint: str = "flights",
+    run_id: str | None = None,
+    mongodb_uri=None,
+    mongodb_db=None,
+    mongodb_collection=None,
+):
+    run_id = run_id or generate_run_id()
     stage = "load_flights"
     started_at = time.perf_counter()
 
@@ -89,6 +96,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
         "INFO",
         stage,
         "pipeline_started",
+        run_id=run_id,
+        source=source,
+        endpoint=endpoint,
         incoming_dir=str(INCOMING_DIR),
         processed_dir=str(PROCESSED_DIR),
         mongodb_db=mongodb_db,
@@ -114,19 +124,42 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
         )
 
         PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-        target_files = sorted(INCOMING_DIR.glob("aviationstack_flights_incoming_*.json"))
+
+        # First try: strict run_id matching
+        pattern = build_incoming_pattern(source, endpoint, run_id=run_id)
+        target_files = sorted(INCOMING_DIR.glob(pattern))
+
+        # Fallback: allow legacy/test files without run_id
+        if not target_files:
+            fallback_pattern = build_incoming_pattern(source, endpoint, run_id=None)
+            target_files = sorted(INCOMING_DIR.glob(fallback_pattern))
+
+            if target_files:
+                log_event(
+                    "WARNING",
+                    stage,
+                    "fallback_to_legacy_pattern",
+                    run_id=run_id,
+                    source=source,
+                    endpoint=endpoint,
+                    fallback_pattern=fallback_pattern,
+                    files=len(target_files),
+                )
 
         if not target_files:
             raise FileNotFoundError(
-                "No files found in data/incoming matching aviationstack_flights_incoming_*.json"
+                f"No files found in data/incoming matching {pattern}"
             )
 
         log_event(
             "INFO",
             stage,
             "input_files_discovered",
+            run_id=run_id,
+            source=source,
+            endpoint=endpoint,
             files=len(target_files),
-            pattern="aviationstack_flights_incoming_*.json",
+            pattern=pattern,
         )
 
         for file_path in target_files:
@@ -137,6 +170,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                 "INFO",
                 stage,
                 "file_processing_started",
+                run_id=run_id,
+                source=source,
+                endpoint=endpoint,
                 file_name=file_path.name,
                 file_path=str(file_path),
             )
@@ -165,6 +201,7 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
 
                     valid_in_file += 1
                     item.update(flight_key)
+                    item["_meta"] = build_document_meta(run_id, source, endpoint)
 
                     updates.append(
                         UpdateOne(
@@ -185,13 +222,20 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                     result = collection.bulk_write(updates, ordered=False)
                     inserted_in_file = result.upserted_count
                     updated_in_file = result.modified_count
-                    unchanged_in_file = max(result.matched_count - result.modified_count, 0)
+                    unchanged_in_file = max(
+                        result.matched_count - result.modified_count,
+                        0,
+                    )
 
                     total_inserted += inserted_in_file
                     total_updated += updated_in_file
                     total_unchanged += unchanged_in_file
 
-                destination = PROCESSED_DIR / file_path.name
+                destination = build_processed_destination(
+                    PROCESSED_DIR,
+                    run_id,
+                    file_path.name,
+                )
                 shutil.move(str(file_path), str(destination))
 
                 file_duration_seconds = round(time.perf_counter() - file_started_at, 3)
@@ -200,6 +244,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                     "INFO",
                     stage,
                     "file_processed",
+                    run_id=run_id,
+                    source=source,
+                    endpoint=endpoint,
                     file_name=file_path.name,
                     records=len(data),
                     valid=valid_in_file,
@@ -211,11 +258,29 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                     duration_seconds=file_duration_seconds,
                 )
 
+                emit_file_metrics(
+                    source=source,
+                    endpoint=endpoint,
+                    stage=stage,
+                    run_id=run_id,
+                    file_name=file_path.name,
+                    records=len(data),
+                    valid=valid_in_file,
+                    invalid=invalid_in_file,
+                    inserted=inserted_in_file,
+                    updated=updated_in_file,
+                    unchanged=unchanged_in_file,
+                    duration_seconds=file_duration_seconds,
+                )
+
             except json.JSONDecodeError as exc:
                 log_event(
                     "ERROR",
                     stage,
                     "file_json_decode_error",
+                    run_id=run_id,
+                    source=source,
+                    endpoint=endpoint,
                     file_name=file_path.name,
                     error=str(exc),
                 )
@@ -226,6 +291,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                     "ERROR",
                     stage,
                     "file_bulk_write_error",
+                    run_id=run_id,
+                    source=source,
+                    endpoint=endpoint,
                     file_name=file_path.name,
                     details=exc.details,
                 )
@@ -236,6 +304,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
                     "ERROR",
                     stage,
                     "file_processing_failed",
+                    run_id=run_id,
+                    source=source,
+                    endpoint=endpoint,
                     file_name=file_path.name,
                     error_type=type(exc).__name__,
                     error=str(exc),
@@ -248,6 +319,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
             "INFO",
             stage,
             "pipeline_summary",
+            run_id=run_id,
+            source=source,
+            endpoint=endpoint,
             files=total_files,
             records=total_records,
             valid=total_valid_records,
@@ -259,6 +333,30 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
             duration_seconds=duration_seconds,
         )
 
+        emit_pipeline_metrics(
+            source=source,
+            endpoint=endpoint,
+            stage=stage,
+            run_id=run_id,
+            files=total_files,
+            records=total_records,
+            valid=total_valid_records,
+            invalid=total_invalid_records,
+            inserted=total_inserted,
+            updated=total_updated,
+            unchanged=total_unchanged,
+            duration_seconds=duration_seconds,
+        )
+
+        emit_pipeline_status(
+            source=source,
+            endpoint=endpoint,
+            stage=stage,
+            run_id=run_id,
+            status="success",
+            value=1,
+        )
+
     except Exception as exc:
         duration_seconds = round(time.perf_counter() - started_at, 3)
 
@@ -266,6 +364,9 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
             "ERROR",
             stage,
             "pipeline_failed",
+            run_id=run_id,
+            source=source,
+            endpoint=endpoint,
             error_type=type(exc).__name__,
             error=str(exc),
             files=total_files,
@@ -277,12 +378,38 @@ def sync_flights_to_mongo(mongodb_uri=None, mongodb_db=None, mongodb_collection=
             unchanged=total_unchanged,
             duration_seconds=duration_seconds,
         )
+
+        emit_pipeline_status(
+            source=source,
+            endpoint=endpoint,
+            stage=stage,
+            run_id=run_id,
+            status="failed",
+            value=0,
+        )
         raise
 
     finally:
         client.close()
-        log_event("INFO", stage, "mongodb_connection_closed")
+        log_event(
+            "INFO",
+            stage,
+            "mongodb_connection_closed",
+            run_id=run_id,
+            source=source,
+            endpoint=endpoint,
+        )
 
 
 if __name__ == "__main__":
-    sync_flights_to_mongo()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--endpoint", required=True)
+    parser.add_argument("--run-id", required=False)
+    args = parser.parse_args()
+
+    sync_flights_to_mongo(
+        source=args.source.strip().lower(),
+        endpoint=args.endpoint.strip().lower(),
+        run_id=args.run_id,
+    )
