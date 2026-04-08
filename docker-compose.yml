@@ -46,6 +46,8 @@ services:
 
       ENV_FILE: /opt/airflow/project/.env.docker
 
+      DST_AIRLINES_HOME: /opt/airflow/project
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./:/opt/airflow/project
@@ -77,6 +79,8 @@ services:
 
       ENV_FILE: /opt/airflow/project/.env.docker
 
+      DST_AIRLINES_HOME: /opt/airflow/project
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./:/opt/airflow/project
@@ -93,6 +97,9 @@ services:
       - postgres
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://root:passwd@postgres:5432/airflow
+
+      DST_AIRLINES_HOME: /opt/airflow/project
+      
     volumes:
       - ./:/opt/airflow/project
     entrypoint: >
