@@ -41,7 +41,6 @@ services:
 
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://root:passwd@postgres:5432/airflow
 
-      # 👇 para que vea tu código
       PYTHONPATH: /opt/airflow/project/src
 
       ENV_FILE: /opt/airflow/project/.env.docker
